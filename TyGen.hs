@@ -1,4 +1,4 @@
-module Data 
+module TyGen 
 ( Base (..)
 , BString
 , isPurin
@@ -7,13 +7,12 @@ module Data
 , isComplement
 , Enzyme
 , EnzymeCommand (..)
-, direction
+--, direction
 , bindingBase
 , bindsTo
-, Context
+--, Context
 , initContext
-, showContext
-, apply
+--, apply
 , execute
 , stripBStrings 
 )
@@ -141,23 +140,6 @@ data Context = Context { topL :: BString'   -- Part left to the enzyme.
                        }
                        deriving (Show, Read)
 
-showBString' str = concatMap mapperBString' str
-
-mapperBString' Nothing = " "
-mapperBString' (Just b) = show b 
-
-showContext :: Context -> String
-showContext context = 
-    let lenL = max (length . topL $ context) (length . botL $ context)
-        lenR = max (length . topR $ context) (length . botR $ context)
-    in  showBString' (reverse (take lenL (topL context ++ repeat Nothing))) 
-            ++ "|" ++ mapperBString' (topC context) ++ "|" 
-            ++ showBString' (take lenR (topR context ++ repeat Nothing)) 
-        ++ "\n" ++  
-        showBString' (reverse (take lenL (botL context ++ repeat Nothing)))
-            ++ "|" ++ mapperBString' (botC context) ++ "|" 
-            ++ showBString' (take lenR (botR context ++ repeat Nothing)) 
-
 -- a little helper, start at position with enzyme over BString
 initContext :: Int -> Enzyme -> BString -> Context
 initContext pos enz str =
@@ -241,16 +223,45 @@ applyCopyMode context
     | topC context == Nothing = implErrorTopC
     | not $ copyMode context = context
     | otherwise = context { botC = Just . complement . fromJust . topC $ context }
+
+execute = stripBStrings . execute
        
-execute context
+execute' context
     | topC context == Nothing = context
     | null . enzyme $ context = context
     | otherwise = 
         let (e:es) = enzyme context
             context' = apply e context
-        in execute $ context' { enzyme = es } 
+        in execute' $ context' { enzyme = es } 
 
 stripBStrings context =  filter (not . null) $ 
     _split (reverse (topL context) ++ [topC context] ++ topR context)
     ++ _split (reverse (botR context) ++ [botC context] ++ botL context)
     ++ residues context
+
+-- NOw the last trick: a BString can be converted to an enzyme.
+
+bStringToEnzymes :: BString -> [Enzyme]
+bStringToEnzymes str = 
+    let paired   = toPairs str
+        splitted = splitWhen ((A,A) ==) paired
+    in fmap (fmap enzMap) splitted
+    where toPairs []       = []
+          toPairs (_:[])   = []
+          toPairs (a:b:bs) = (a,b) : toPairs bs  
+          
+          enzMap (A,C) = Cut
+          enzMap (A,G) = Del
+          enzMap (A,T) = MoS
+          enzMap (C,A) = MoR
+          enzMap (C,C) = MoL
+          enzMap (C,G) = COn
+          enzMap (C,T) = COf
+          enzMap (G,A) = InA
+          enzMap (G,C) = InC
+          enzMap (G,G) = InG
+          enzMap (G,T) = InT
+          enzMap (T,A) = PyR
+          enzMap (T,C) = PuR
+          enzMap (T,G) = PyL
+          enzMap (T,T) = PuL
